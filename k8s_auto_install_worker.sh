@@ -77,3 +77,5 @@ print_green "Swap off Set..."
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 sudo swapoff -a
 print_green "Swap disabled."
+
+print_green "Kubernetes setup completed successfully! Please restart shell."
