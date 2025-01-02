@@ -13,7 +13,7 @@ git clone https://github.com/WoogiBoogi1129/Kubernetes_Installer.git
 
 - sh파일 권한 부여
 ```sh
-chmod +x Kubernetes_Installer/k8s_auto_install_master.sh
+sudo chmod +x Kubernetes_Installer/k8s_auto_install_master.sh
 ```
 
 - sh 파일 실행
@@ -24,12 +24,12 @@ sudo ./Kubernetes_Installer/k8s_auto_install_master.sh
 ### Worker Node 설치
 - git clone 명령어를 이용하여 로컬로 파일 가져오기.
 ```sh
-git clone https://github.com/WoogiBoogi1129/Kubernetes_Installer.git
+sudo git clone https://github.com/WoogiBoogi1129/Kubernetes_Installer.git
 ```
 
 - sh파일 권한 부여
 ```sh
-chmod +x Kubernetes_Installer/k8s_auto_install_worker.sh
+sudo chmod +x Kubernetes_Installer/k8s_auto_install_worker.sh
 ```
 
 - sh 파일 실행
@@ -40,7 +40,7 @@ sudo ./Kubernetes_Installer/k8s_auto_install_worker.sh
 ## Single Node에서 Kubernetes 설치
 Single Node에서 Kubernetes를 설치할 경우, Master Node가 Worker Node 역할 또한 수행할 수 있도록 아래 명령을 통해 Taint를 제거해야합니다.
 ```sh
-kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+sudo kubectl taint nodes --all node-role.kubernetes.io/control-plane-
 ```
 
 ## 추가
