@@ -5,6 +5,12 @@
 - Cluster: Kubeadm
 
 ## 사용방법
+### 사전 요구사항
+- 해당 스크립트는 root 권한에서만 동작하여 아래와 같은 명령어를 통해 root 권한으로 변경해야함.
+```sh
+sudo su -
+```
+
 ### Master Node 설치
 - git clone 명령어를 이용하여 로컬로 파일 가져오기.
 ```sh
