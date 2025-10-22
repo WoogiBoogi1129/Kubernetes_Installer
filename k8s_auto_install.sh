@@ -9,6 +9,7 @@ K8S_VERSION=""
 CRIO_VERSION=""
 CILIUM_VERSION=""
 AUTO_CONFIRM=false
+SUDO=""
 
 function print_green() {
     echo -e "\e[32m$1\e[0m"
@@ -22,7 +23,7 @@ function usage() {
     cat <<USAGE
 Kubernetes 자동 설치 스크립트
 
-사용법: sudo ./k8s_auto_install.sh [옵션]
+사용법: ./k8s_auto_install.sh [옵션]
 
 옵션:
   -k, --k8s-version <버전>      설치할 Kubernetes 버전 (기본: ${DEFAULT_K8S_VERSION})
@@ -107,10 +108,19 @@ function ask_for_versions() {
     fi
 }
 
-function require_root() {
+function ensure_privileges() {
     if [[ $(id -u) -ne 0 ]]; then
-        print_error "이 스크립트는 root 권한으로 실행해야 합니다."
-        exit 1
+        if ! command -v sudo >/dev/null 2>&1; then
+            print_error "root 권한이 아니므로 sudo 명령이 필요합니다. sudo를 설치하거나 root 권한으로 실행하세요."
+            exit 1
+        fi
+        SUDO="sudo"
+        if ! sudo -v; then
+            print_error "sudo 인증에 실패했습니다. sudo 권한을 확인하세요."
+            exit 1
+        fi
+    else
+        SUDO=""
     fi
 }
 
@@ -134,93 +144,104 @@ function gather_system_info() {
 
 function system_update() {
     print_green "[1/11] 시스템 패키지 업데이트 및 필수 패키지 설치 중..."
-    apt-get update
-    apt-get install -y apt-transport-https ca-certificates curl gpg software-properties-common
+    ${SUDO} apt-get update
+    ${SUDO} apt-get install -y apt-transport-https ca-certificates curl gpg software-properties-common
 }
 
 function configure_kernel() {
     print_green "[2/11] Kubernetes 필수 커널 모듈 및 sysctl 설정 중..."
-    cat <<EOF >/etc/modules-load.d/k8s.conf
+    cat <<EOF | ${SUDO} tee /etc/modules-load.d/k8s.conf >/dev/null
 overlay
 br_netfilter
 EOF
 
-    modprobe overlay
-    modprobe br_netfilter
+    ${SUDO} modprobe overlay
+    ${SUDO} modprobe br_netfilter
 
-    cat <<EOF >/etc/sysctl.d/k8s.conf
+    cat <<EOF | ${SUDO} tee /etc/sysctl.d/k8s.conf >/dev/null
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward                 = 1
 EOF
 
-    sysctl --system >/dev/null
+    ${SUDO} sysctl --system >/dev/null
 }
 
 function disable_swap() {
     print_green "[3/11] Swap 비활성화 중..."
-    sed -i.bak '/\sswap\s/s/^/#/' /etc/fstab
-    swapoff -a || true
+    ${SUDO} sed -i.bak '/\sswap\s/s/^/#/' /etc/fstab
+    ${SUDO} swapoff -a || true
 }
 
 function install_crio() {
     print_green "[4/11] CRI-O ${CRIO_VERSION} 설치 중..."
     local keyring_dir="/etc/apt/keyrings"
-    install -m 0755 -d "$keyring_dir"
+    ${SUDO} install -m 0755 -d "$keyring_dir"
 
     local libcontainers_key="$keyring_dir/libcontainers-archive-keyring.gpg"
     local crio_key="$keyring_dir/crio-archive-keyring.gpg"
 
+    local tmp_key
+
+    tmp_key=$(mktemp)
     curl -fsSL "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/${OS_VERSION_CODENAME}/Release.key" \
-        | gpg --dearmor -o "$libcontainers_key"
+        | gpg --dearmor -o "$tmp_key"
+    ${SUDO} install -m 0644 "$tmp_key" "$libcontainers_key"
 
     curl -fsSL "https://download.opensuse.org/repositories/devel:/kubic:/cri-o:/${CRIO_VERSION}/${OS_VERSION_CODENAME}/Release.key" \
-        | gpg --dearmor -o "$crio_key"
+        | gpg --dearmor -o "$tmp_key"
+    ${SUDO} install -m 0644 "$tmp_key" "$crio_key"
+    rm -f "$tmp_key"
 
-    cat <<EOF >/etc/apt/sources.list.d/libcontainers.list
+    cat <<EOF | ${SUDO} tee /etc/apt/sources.list.d/libcontainers.list >/dev/null
 deb [signed-by=${libcontainers_key}] https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/${OS_VERSION_CODENAME}/ /
 EOF
 
-    cat <<EOF >/etc/apt/sources.list.d/crio-${CRIO_VERSION}.list
+    cat <<EOF | ${SUDO} tee /etc/apt/sources.list.d/crio-${CRIO_VERSION}.list >/dev/null
 deb [signed-by=${crio_key}] https://download.opensuse.org/repositories/devel:/kubic:/cri-o:/${CRIO_VERSION}/${OS_VERSION_CODENAME}/ /
 EOF
 
-    apt-get update
-    apt-get install -y cri-o cri-o-runc
-    systemctl enable --now crio
+    ${SUDO} apt-get update
+    ${SUDO} apt-get install -y cri-o cri-o-runc
+    ${SUDO} systemctl enable --now crio
 }
 
 function install_kubernetes_components() {
     print_green "[5/11] Kubernetes ${K8S_VERSION} 저장소 추가 및 구성 요소 설치 중..."
     local keyring_dir="/etc/apt/keyrings"
-    install -m 0755 -d "$keyring_dir"
+    ${SUDO} install -m 0755 -d "$keyring_dir"
 
     local k8s_key="$keyring_dir/kubernetes-apt-keyring.gpg"
-    curl -fsSL "https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/Release.key" | gpg --dearmor -o "$k8s_key"
+    local tmp_key
+    tmp_key=$(mktemp)
 
-    cat <<EOF >/etc/apt/sources.list.d/kubernetes.list
+    curl -fsSL "https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/Release.key" | gpg --dearmor -o "$tmp_key"
+    ${SUDO} install -m 0644 "$tmp_key" "$k8s_key"
+    rm -f "$tmp_key"
+
+    cat <<EOF | ${SUDO} tee /etc/apt/sources.list.d/kubernetes.list >/dev/null
 deb [signed-by=${k8s_key}] https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/ /
 EOF
 
-    apt-get update
-    apt-get install -y kubelet kubeadm kubectl
-    apt-mark hold kubelet kubeadm kubectl
-    systemctl enable --now kubelet
+    ${SUDO} apt-get update
+    ${SUDO} apt-get install -y kubelet kubeadm kubectl
+    ${SUDO} apt-mark hold kubelet kubeadm kubectl
+    ${SUDO} systemctl enable --now kubelet
 }
 
 function pull_required_images() {
     print_green "[6/11] kubeadm이 필요한 이미지를 사전 Pull 중..."
-    kubeadm config images pull --kubernetes-version "v${K8S_VERSION}" --cri-socket unix:///var/run/crio/crio.sock
+    ${SUDO} kubeadm config images pull --kubernetes-version "v${K8S_VERSION}" --cri-socket unix:///var/run/crio/crio.sock
 }
 
 function kubeadm_init() {
     print_green "[7/11] Kubernetes Control Plane 초기화 중..."
-    kubeadm init --kubernetes-version "v${K8S_VERSION}" --pod-network-cidr=10.244.0.0/16 --cri-socket unix:///var/run/crio/crio.sock
+    ${SUDO} kubeadm init --kubernetes-version "v${K8S_VERSION}" --pod-network-cidr=10.244.0.0/16 --cri-socket unix:///var/run/crio/crio.sock
 
     print_green "[8/11] kubeconfig 설정 중..."
     mkdir -p "$HOME/.kube"
-    cp -i /etc/kubernetes/admin.conf "$HOME/.kube/config"
-    chown $(id -u):$(id -g) "$HOME/.kube/config"
+    ${SUDO} cp -i /etc/kubernetes/admin.conf "$HOME/.kube/config"
+    ${SUDO} chown $(id -u):$(id -g) "$HOME/.kube/config"
 }
 
 function install_cilium_cli() {
@@ -232,7 +253,7 @@ function install_cilium_cli() {
     local archive="cilium-linux-amd64.tar.gz"
     curl -L "https://github.com/cilium/cilium-cli/releases/download/${cli_version}/${archive}" -o "$tmpdir/${archive}"
     tar -xzf "$tmpdir/${archive}" -C "$tmpdir"
-    install -m 0755 "$tmpdir/cilium" /usr/local/bin/cilium
+    ${SUDO} install -m 0755 "$tmpdir/cilium" /usr/local/bin/cilium
     rm -rf "$tmpdir"
 }
 
@@ -253,17 +274,20 @@ function install_cilium_cni() {
 
 function enable_bash_completion() {
     print_green "[11/11] Bash Completion 설정 중..."
-    apt-get install -y bash-completion
-    local bashrc="/root/.bashrc"
+    ${SUDO} apt-get install -y bash-completion
+    local bashrc="$HOME/.bashrc"
+    touch "$bashrc"
     if ! grep -q "kubectl completion" "$bashrc" 2>/dev/null; then
-        echo 'source <(kubectl completion bash)' >> "$bashrc"
-        echo 'alias k=kubectl' >> "$bashrc"
-        echo 'complete -F __start_kubectl k' >> "$bashrc"
+        {
+            echo 'source <(kubectl completion bash)'
+            echo 'alias k=kubectl'
+            echo 'complete -F __start_kubectl k'
+        } >> "$bashrc"
     fi
 }
 
 parse_args "$@"
-require_root
+ensure_privileges
 gather_system_info
 ask_for_versions
 

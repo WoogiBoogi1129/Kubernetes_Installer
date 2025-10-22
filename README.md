@@ -5,12 +5,6 @@
 - 기본 Kubernetes Version: v1.33
 
 ## 사용방법
-### 사전 요구사항
-- 해당 스크립트는 root 권한에서만 동작하여 아래와 같은 명령어를 통해 root 권한으로 변경해야함.
-```sh
-sudo su -
-```
-
 ### 설치 절차 (Control Plane 자동 구성)
 1. git clone 명령어를 이용하여 로컬로 파일 가져오기.
    ```sh
@@ -19,12 +13,12 @@ sudo su -
 
 2. 스크립트 실행 권한 부여.
    ```sh
-   sudo chmod +x Kubernetes_Installer/k8s_auto_install.sh
+   chmod +x Kubernetes_Installer/k8s_auto_install.sh
    ```
 
 3. 스크립트 실행.
    ```sh
-   sudo ./Kubernetes_Installer/k8s_auto_install.sh
+   ./Kubernetes_Installer/k8s_auto_install.sh
    ```
 
    실행 중 Kubernetes, CRI-O, Cilium 버전을 직접 입력하여 선택할 수 있으며 아무 입력도 하지 않으면 아래 기본값으로 진행됩니다.
@@ -32,9 +26,11 @@ sudo su -
    - CRI-O: v1.33
    - Cilium: 최신 버전
 
+   스크립트는 필요한 단계에서 자동으로 `sudo` 권한을 요청합니다. 일반 사용자 계정에서도 실행할 수 있지만 `sudo` 사용 권한이 필요합니다.
+
 4. 프롬프트 없이 자동 진행하려면 원하는 버전을 인자와 함께 전달할 수 있습니다.
    ```sh
-   sudo ./k8s_auto_install.sh \
+   ./k8s_auto_install.sh \
      --k8s-version 1.32 \
      --crio-version 1.32 \
      --cilium-version 1.15.6 \
@@ -44,7 +40,7 @@ sudo su -
 ## Single Node에서 Kubernetes 설치
 Single Node에서 Kubernetes를 설치할 경우, Master Node가 Worker Node 역할 또한 수행할 수 있도록 아래 명령을 통해 Taint를 제거해야합니다.
 ```sh
-sudo kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+kubectl taint nodes --all node-role.kubernetes.io/control-plane-
 ```
 
 ## 레거시 스크립트
