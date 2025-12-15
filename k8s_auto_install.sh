@@ -147,12 +147,39 @@ function gather_system_info() {
         exit 1
     fi
 
+}
+
+function determine_repo_name() {
     case "$OS_ID" in
         ubuntu)
-            OS_REPO_NAME="xUbuntu_${OS_VERSION_ID}"
+            case "$OS_VERSION_ID" in
+                24.04)
+                    print_green "Ubuntu 24.04는 CRI-O가 아직 공식 저장소를 제공하지 않습니다. xUbuntu_22.04 패키지를 사용합니다."
+                    OS_REPO_NAME="xUbuntu_22.04"
+                    ;;
+                22.04|20.04)
+                    OS_REPO_NAME="xUbuntu_${OS_VERSION_ID}"
+                    ;;
+                *)
+                    print_error "지원되지 않는 Ubuntu 버전입니다: ${OS_VERSION_ID}. 지원되는 버전: 20.04, 22.04, 24.04"
+                    exit 1
+                    ;;
+            esac
             ;;
         debian)
-            OS_REPO_NAME="Debian_${OS_VERSION_ID}"
+            case "$OS_VERSION_ID" in
+                12|11)
+                    OS_REPO_NAME="Debian_${OS_VERSION_ID}"
+                    ;;
+                *)
+                    print_error "지원되지 않는 Debian 버전입니다: ${OS_VERSION_ID}. 지원되는 버전: 11, 12"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        *)
+            print_error "지원되지 않는 운영 체제입니다: ${OS_ID}"
+            exit 1
             ;;
     esac
 }
@@ -322,6 +349,7 @@ function enable_bash_completion() {
 parse_args "$@"
 ensure_privileges
 gather_system_info
+determine_repo_name
 ask_for_versions
 
 print_green "선택된 설정: Kubernetes ${K8S_VERSION}, CRI-O ${CRIO_VERSION}, Cilium ${CILIUM_VERSION}"
