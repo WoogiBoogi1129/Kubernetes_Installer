@@ -132,6 +132,7 @@ function gather_system_info() {
     . /etc/os-release
     OS_ID=${ID:-}
     OS_VERSION_CODENAME=${VERSION_CODENAME:-}
+    OS_VERSION_ID=${VERSION_ID:-}
     if [[ "$OS_ID" != "ubuntu" && "$OS_ID" != "debian" ]]; then
         print_error "지원하지 않는 운영 체제입니다: ${OS_ID}"
         exit 1
@@ -140,6 +141,20 @@ function gather_system_info() {
         print_error "배포판 코드네임을 확인할 수 없습니다."
         exit 1
     fi
+
+    if [[ -z "$OS_VERSION_ID" ]]; then
+        print_error "배포판 버전을 확인할 수 없습니다."
+        exit 1
+    fi
+
+    case "$OS_ID" in
+        ubuntu)
+            OS_REPO_NAME="xUbuntu_${OS_VERSION_ID}"
+            ;;
+        debian)
+            OS_REPO_NAME="Debian_${OS_VERSION_ID}"
+            ;;
+    esac
 }
 
 function system_update() {
@@ -181,24 +196,26 @@ function install_crio() {
     local libcontainers_key="$keyring_dir/libcontainers-archive-keyring.gpg"
     local crio_key="$keyring_dir/crio-archive-keyring.gpg"
 
-    local tmp_key
+    local tmp_key_lib
+    local tmp_key_crio
 
-    tmp_key=$(mktemp)
-    curl -fsSL "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/${OS_VERSION_CODENAME}/Release.key" \
-        | gpg --dearmor -o "$tmp_key"
-    ${SUDO} install -m 0644 "$tmp_key" "$libcontainers_key"
+    tmp_key_lib=$(mktemp)
+    curl -fsSL "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/${OS_REPO_NAME}/Release.key" \
+        | gpg --dearmor -o "$tmp_key_lib"
+    ${SUDO} install -m 0644 "$tmp_key_lib" "$libcontainers_key"
 
-    curl -fsSL "https://download.opensuse.org/repositories/devel:/kubic:/cri-o:/${CRIO_VERSION}/${OS_VERSION_CODENAME}/Release.key" \
-        | gpg --dearmor -o "$tmp_key"
-    ${SUDO} install -m 0644 "$tmp_key" "$crio_key"
-    rm -f "$tmp_key"
+    tmp_key_crio=$(mktemp)
+    curl -fsSL "https://download.opensuse.org/repositories/devel:/kubic:/cri-o:/${CRIO_VERSION}/${OS_REPO_NAME}/Release.key" \
+        | gpg --dearmor -o "$tmp_key_crio"
+    ${SUDO} install -m 0644 "$tmp_key_crio" "$crio_key"
+    rm -f "$tmp_key_lib" "$tmp_key_crio"
 
     cat <<EOF | ${SUDO} tee /etc/apt/sources.list.d/libcontainers.list >/dev/null
-deb [signed-by=${libcontainers_key}] https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/${OS_VERSION_CODENAME}/ /
+deb [signed-by=${libcontainers_key}] https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/${OS_REPO_NAME}/ /
 EOF
 
     cat <<EOF | ${SUDO} tee /etc/apt/sources.list.d/crio-${CRIO_VERSION}.list >/dev/null
-deb [signed-by=${crio_key}] https://download.opensuse.org/repositories/devel:/kubic:/cri-o:/${CRIO_VERSION}/${OS_VERSION_CODENAME}/ /
+deb [signed-by=${crio_key}] https://download.opensuse.org/repositories/devel:/kubic:/cri-o:/${CRIO_VERSION}/${OS_REPO_NAME}/ /
 EOF
 
     ${SUDO} apt-get update
